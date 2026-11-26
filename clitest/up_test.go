@@ -193,3 +193,29 @@ func TestUpNeedsTheDockerCLI(t *testing.T) {
 	assert.Check(t, code != 0)
 	assert.Check(t, cmp.Contains(out, "needs the Docker CLI on PATH"))
 }
+
+// TestUpCarriesOnPastAOneShotService covers a migration that exits 0 with
+// nothing waiting on it, which fails compose's own wait.
+func TestUpCarriesOnPastAOneShotService(t *testing.T) {
+	for _, tc := range []struct {
+		exit int
+		pass bool
+	}{{0, true}, {1, false}} {
+		t.Run(fmt.Sprintf("exit %d", tc.exit), func(t *testing.T) {
+			j := newJob(t)
+			j.env["FAKE_DOCKER_UP_EXIT"] = "1"
+			j.setPS(
+				psLine("app-db-1", "db", "healthy", "null"),
+				fmt.Sprintf(`{"Name":"app-migrate-1","Service":"migrate","State":"exited","Health":"","ExitCode":%d,"Publishers":null}`, tc.exit),
+			)
+			out, code := j.run("--wait-timeout", "5s", "--no-logs-on-fail")
+			if tc.pass {
+				assert.Check(t, cmp.Equal(code, 0), out)
+				assert.Check(t, cmp.Contains(out, "app-migrate-1 ran to completion"))
+			} else {
+				assert.Check(t, code != 0, out)
+				assert.Check(t, cmp.Contains(out, "app-migrate-1 is exited"))
+			}
+		})
+	}
+}

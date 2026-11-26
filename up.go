@@ -62,6 +62,9 @@ func (c *upCmd) Run(ctx context.Context, client *sdk.Client) error {
 
 	deadline := time.Now().Add(timeout)
 	upErr := p.Run(ctx, append(c.upArgs("--detach", "--wait", "--wait-timeout", seconds(timeout)), services...)...)
+	if upErr != nil && settle(ctx, p, deadline) {
+		upErr = nil
+	}
 
 	name, err := p.ResolvedName(ctx)
 	if err != nil {
@@ -152,6 +155,54 @@ func (c *upCmd) keepLogs(ctx context.Context, client *sdk.Client, p compose.Proj
 	}
 }
 
+// settle finishes the wait compose gave up on when a one-shot service, such
+// as a migration, exited 0: `up --wait` fails on any container that exits,
+// unless another service waits for it to complete. It reports whether every
+// container is then healthy, running without a healthcheck, or done.
+func settle(ctx context.Context, p compose.Project, deadline time.Time) bool {
+	cs, err := p.PS(ctx)
+	if err != nil || !slices.ContainsFunc(cs, completed) {
+		return false
+	}
+	for {
+		pending := false
+		for _, c := range cs {
+			switch {
+			case c.State == "exited" && c.ExitCode != 0, c.Health == "unhealthy":
+				return false
+			case !upToDate(c):
+				pending = true
+			}
+		}
+		if !pending {
+			for _, c := range cs {
+				if completed(c) {
+					fmt.Fprintf(os.Stderr, "setup-compose: %s ran to completion\n", c.Name)
+				}
+			}
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(time.Second):
+		}
+		if cs, err = p.PS(ctx); err != nil {
+			return false
+		}
+	}
+}
+
+func completed(c compose.Container) bool { return c.State == "exited" && c.ExitCode == 0 }
+
+// upToDate reports whether a container is as far as `up --wait` takes it.
+func upToDate(c compose.Container) bool {
+	return c.Health == "healthy" || (c.Health == "" && c.State == "running") || completed(c)
+}
+
 // showFailures prints the end of the logs of each container that did not
 // come up, so the reason is in the step's own output.
 func showFailures(ctx context.Context, p compose.Project) {
@@ -160,8 +211,7 @@ func showFailures(ctx context.Context, p compose.Project) {
 		return
 	}
 	for _, c := range containers {
-		healthy := c.Health == "healthy" || (c.Health == "" && c.State == "running") || (c.State == "exited" && c.ExitCode == 0)
-		if healthy {
+		if upToDate(c) {
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "\nsetup-compose: %s is %s%s; its last lines:\n", c.Name, c.State, healthSuffix(c.Health))
