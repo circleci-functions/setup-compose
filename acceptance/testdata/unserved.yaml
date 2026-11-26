@@ -1,0 +1,6 @@
+# A port is published, but nothing in the container listens on it.
+services:
+  quiet:
+    image: alpine:3
+    command: ["sleep", "infinity"]
+    ports: ["80"]

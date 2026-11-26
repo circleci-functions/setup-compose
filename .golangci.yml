@@ -70,6 +70,10 @@ linters:
           - gosec
         path: _test\.go
         text: ^G404(.*)$
+      - linters:
+          - gosec
+        path: _test\.go
+        text: ^G(301|702|703)(.*)$
 formatters:
   enable:
     - gofmt

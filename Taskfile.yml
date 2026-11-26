@@ -62,11 +62,11 @@ tasks:
       - go tool release --name setup-compose --version v0.0.0-dryrun --dry-run
 
   build-acceptance:
-    desc: Cross-compile the acceptance suite, so an executor with no Go can run it
+    desc: Cross-compile the acceptance suite for Linux, so an executor with no Go can run it
     cmds:
       - |
         set -eu
-        for platform in linux/amd64 darwin/arm64 windows/amd64; do
+        for platform in linux/amd64 linux/arm64; do
           os="${platform%/*}"; arch="${platform#*/}"
           out="dist/acceptance/$os/$arch/acceptance"
           if [ "$os" = windows ]; then out="$out.exe"; fi
@@ -84,7 +84,7 @@ tasks:
     cmds:
       - |
         set -eu
-        for platform in linux/amd64 darwin/arm64 windows/amd64; do
+        for platform in linux/amd64 linux/arm64; do
           os="${platform%/*}"; arch="${platform#*/}"
           ext=""
           if [ "$os" = windows ]; then ext=".exe"; fi

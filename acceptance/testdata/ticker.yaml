@@ -1,0 +1,4 @@
+services:
+  ticker:
+    image: alpine:3
+    command: ["sh", "-c", "i=0; while true; do i=$$((i+1)); echo tick $$i; sleep 1; done"]

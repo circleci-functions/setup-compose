@@ -15,6 +15,60 @@ executors:
   go:
     docker:
       - image: cimg/go:1.26
+  # The VMs have a Docker engine of their own, so published ports are on
+  # loopback, as they are for most users.
+  machine:
+    machine:
+      image: ubuntu-2404:current
+  machine-arm:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+  # No Go and no engine: Docker is the remote one setup_remote_docker starts.
+  base:
+    docker:
+      - image: cimg/base:stable
+
+commands:
+  acceptance:
+    description: >-
+      Run the packaged acceptance suite against the packaged binary, so the
+      executor needs no Go, no modules and no checkout. test2json and gotestsum
+      turn the suite's output into the JUnit CircleCI collects; gotestsum warns
+      that it cannot find `go`, which is harmless.
+    parameters:
+      platform:
+        type: string
+        default: linux/amd64
+        description: The os/arch whose artifacts to run.
+      run:
+        type: string
+        default: "."
+        description: Test name pattern to pass to -test.run.
+      phase:
+        type: string
+        default: ""
+        description: SETUP_COMPOSE_FOLLOW_PHASE, for a test split across steps.
+      step-name:
+        type: string
+        default: Run the acceptance suite
+    steps:
+      - run:
+          name: << parameters.step-name >>
+          command: |
+            mkdir -p test-results
+            ./dist/tools/<< parameters.platform >>/gotestsum \
+              --junitfile "test-results/acceptance<< parameters.phase >>.xml" \
+              --format standard-verbose \
+              --raw-command -- \
+              ./dist/tools/<< parameters.platform >>/test2json \
+                -p acceptance \
+                ./dist/acceptance/<< parameters.platform >>/acceptance \
+                -test.v=test2json -test.timeout 20m -test.run '<< parameters.run >>'
+          environment:
+            SETUP_COMPOSE_BINARY: ./dist/setup-compose/<< parameters.platform >>/setup-compose
+            SETUP_COMPOSE_FOLLOW_PHASE: << parameters.phase >>
+            SETUP_COMPOSE_FOLLOW_DIR: /tmp/setup-compose-follow
 
 jobs:
   test:
@@ -39,7 +93,8 @@ jobs:
             - ~/go/pkg/mod
 
   # Cross-compiles setup-compose into ./dist and persists it to the workspace,
-  # so later jobs exercise exactly what `publish` is about to ship.
+  # with the acceptance suite and the tools to report it, so the jobs below
+  # exercise exactly what `publish` is about to ship.
   build:
     executor: go
     steps:
@@ -49,10 +104,61 @@ jobs:
             - setup-compose-go-{{ checksum "go.sum" }}-
             - setup-compose-go-
       - run: task dry-run
+      - run: task build-acceptance
+      - run: task build-tools
       - persist_to_workspace:
           root: .
           paths:
             - dist
+
+  acceptance:
+    executor: machine
+    steps:
+      - attach_workspace:
+          at: .
+      - acceptance
+      - store_test_results:
+          path: test-results
+
+  acceptance-arm:
+    executor: machine-arm
+    steps:
+      - attach_workspace:
+          at: .
+      - acceptance:
+          platform: linux/arm64
+      - store_test_results:
+          path: test-results
+
+  # The tests that need published ports on loopback skip themselves here; the
+  # rest, and the remote-engine test, run.
+  acceptance-remote-docker:
+    executor: base
+    steps:
+      - setup_remote_docker
+      - attach_workspace:
+          at: .
+      - acceptance
+      - store_test_results:
+          path: test-results
+
+  # The log followers `up` leaves behind have to outlive the step that started
+  # them, not just its process, so the check runs in a step of its own.
+  follow-across-steps:
+    executor: machine
+    steps:
+      - attach_workspace:
+          at: .
+      - acceptance:
+          step-name: Start a project and return
+          run: TestAcceptance_FollowsAfterTheStep
+          phase: start
+      - acceptance:
+          step-name: Check its logs are still followed
+          run: TestAcceptance_FollowsAfterTheStep
+          phase: check
+      - store_test_results:
+          path: test-results
 
 workflows:
   test-publish:
@@ -61,6 +167,14 @@ workflows:
     jobs:
       - test
       - build
+      - acceptance:
+          requires: [build]
+      - acceptance-arm:
+          requires: [build]
+      - acceptance-remote-docker:
+          requires: [build]
+      - follow-across-steps:
+          requires: [build]
       - toolkit/release-pr:
           name: release-pr
           executor: go
@@ -70,6 +184,10 @@ workflows:
           requires: &release-requires
             - test
             - build
+            - acceptance
+            - acceptance-arm
+            - acceptance-remote-docker
+            - follow-across-steps
           context: [github-release]
           filters:
             branches:
@@ -85,8 +203,8 @@ workflows:
             branches:
               only: main
 
-  # Triggered by hand, so it skips the slower jobs: the pre-release is what gets
-  # tested. Only maintainers can publish one.
+  # Triggered by hand, so it skips the acceptance jobs: the pre-release is what
+  # gets tested. Only maintainers can publish one.
   prerelease:
     when: << pipeline.parameters.prerelease >>
     jobs:
