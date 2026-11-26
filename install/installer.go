@@ -8,11 +8,10 @@ import (
 )
 
 type Installer struct {
-	GitHubURL        string
-	InstallDir       string
-	PluginDir        string
-	HTTP             *http.Client
-	SystemPluginDirs []string
+	GitHubURL  string
+	InstallDir string
+	PluginDir  string
+	HTTP       *http.Client
 	// RetryWait is the first wait between download attempts, doubling after each. Zero means 1s.
 	RetryWait time.Duration
 }
@@ -24,12 +23,6 @@ func New(linkDir string) Installer {
 		InstallDir: linkDir,
 		PluginDir:  pluginDir,
 		HTTP:       &http.Client{Timeout: 10 * time.Minute},
-		SystemPluginDirs: []string{
-			"/usr/local/lib/docker/cli-plugins",
-			"/usr/local/libexec/docker/cli-plugins",
-			"/usr/lib/docker/cli-plugins",
-			"/usr/libexec/docker/cli-plugins",
-		},
 	}
 }
 

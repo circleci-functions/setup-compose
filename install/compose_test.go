@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"gotest.tools/v3/assert"
@@ -113,44 +114,37 @@ func TestComposeChecksumMismatch(t *testing.T) {
 	assert.Check(t, cmp.ErrorContains(err, "SHA-256 mismatch"))
 }
 
-func TestComposeKeepExistingLinksFromSystemDir(t *testing.T) {
+// TestComposeKeepsAnInstalledVersion checks that a Compose already installed
+// is used as it is, with nothing downloaded and nothing linked.
+func TestComposeKeepsAnInstalledVersion(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("script-based test not supported on Windows")
 	}
 
-	const version = "v2.27.2"
-
-	// Put a fake docker-compose in a "system" plugin dir
-	sysDir := t.TempDir()
-	binary := fakeComposeBinary(version)
-	assert.NilError(t, os.WriteFile(filepath.Join(sysDir, "docker-compose"), binary, 0o755))
-
-	// Make docker-compose not on PATH initially (so installedVersion falls back to system lookup)
-	// Instead, set up docker with "compose version" output
 	fakeDockerDir := t.TempDir()
-	dockerScript := fmt.Sprintf(`#!/bin/sh
+	dockerScript := `#!/bin/sh
 case "$1" in
-  compose) case "$2" in version) echo "Docker Compose version %s" ;; esac ;;
-  --version) echo "Docker version 28.0.0, build abc" ;;
+  compose) case "$2" in version) echo "Docker Compose version v2.27.2" ;; esac ;;
 esac
-`, version)
+`
 	assert.NilError(t, os.WriteFile(filepath.Join(fakeDockerDir, "docker"), []byte(dockerScript), 0o755))
-
-	installDir := t.TempDir()
-	t.Setenv("PATH", installDir+string(os.PathListSeparator)+fakeDockerDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PATH", fakeDockerDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected download of %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
 	ins := testInstaller(srv)
-	ins.InstallDir = installDir
-	ins.PluginDir = t.TempDir() // empty plugin dir
-	ins.SystemPluginDirs = []string{sysDir}
+	ins.InstallDir = t.TempDir()
+	ins.PluginDir = t.TempDir()
 
-	ctx := context.Background()
-	res, err := ins.Compose(ctx, Platform{"linux", "amd64"}, version)
-	assert.NilError(t, err)
-	assert.Check(t, cmp.Equal(res.Kept, true))
+	for _, want := range []string{"", "v2.27.2"} {
+		res, err := ins.Compose(context.Background(), Platform{"linux", "amd64"}, want)
+		assert.NilError(t, err)
+		assert.Check(t, cmp.Equal(res.Kept, true), "want %q", want)
+		assert.Check(t, cmp.Equal(strings.TrimPrefix(res.Version, "v"), "2.27.2"))
+		assert.Check(t, cmp.Equal(res.Dir, ""))
+	}
 }

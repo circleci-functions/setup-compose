@@ -2,7 +2,6 @@ package install
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 )
 
@@ -19,12 +18,10 @@ func (i Installer) Compose(ctx context.Context, p Platform, want string) (Result
 		return Result{}, err
 	}
 
+	// An installed Compose is used as it is: everything runs it as
+	// `docker compose`, so it needs no link of its own on PATH.
 	if keep {
-		dir, linkErr := i.linkExistingCompose(ctx, v, p)
-		if linkErr != nil {
-			return Result{}, linkErr
-		}
-		return Result{Tool: "compose", Version: v, Dir: dir, Kept: true}, nil
+		return Result{Tool: "compose", Version: v, Kept: true}, nil
 	}
 
 	asset, err := p.composeAsset()
@@ -50,14 +47,4 @@ func (i Installer) Compose(ctx context.Context, p Platform, want string) (Result
 		return Result{}, err
 	}
 	return Result{Tool: "compose", Version: v, Dir: dir}, nil
-}
-
-// linkExistingCompose searches PluginDir then SystemPluginDirs for docker-compose and links it.
-func (i Installer) linkExistingCompose(ctx context.Context, v string, p Platform) (string, error) {
-	for _, d := range append([]string{i.PluginDir}, i.SystemPluginDirs...) {
-		if _, err := os.Stat(filepath.Join(d, p.exe("docker-compose"))); err == nil {
-			return i.link(ctx, d, v, "docker-compose")
-		}
-	}
-	return "", nil
 }
