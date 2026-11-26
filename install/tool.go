@@ -14,6 +14,8 @@ type Result struct {
 	Dir        string
 	Kept       bool
 	Unverified bool
+	// Replaced is the version found installed and passed over, if any.
+	Replaced string
 }
 
 // chooseVersion applies the version rule: with no version asked for, keep whatever is installed or

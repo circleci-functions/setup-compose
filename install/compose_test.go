@@ -148,3 +148,56 @@ esac
 		assert.Check(t, cmp.Equal(res.Dir, ""))
 	}
 }
+
+// TestComposeReplacesAVersionTooOld installs the pinned Compose over one that
+// lacks flags setup-compose uses, as cimg/base:stable ships.
+func TestComposeReplacesAVersionTooOld(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("script-based test not supported on Windows")
+	}
+	p := Platform{"linux", "amd64"}
+	asset, err := p.composeAsset()
+	assert.NilError(t, err)
+	srv := makeComposeServer(t, DefaultComposeVersion, asset, fakeComposeBinary(DefaultComposeVersion))
+	defer srv.Close()
+
+	fakeDockerDir := t.TempDir()
+	dockerScript := `#!/bin/sh
+case "$1 $2" in "compose version") echo "Docker Compose version v2.6.0" ;; esac
+`
+	assert.NilError(t, os.WriteFile(filepath.Join(fakeDockerDir, "docker"), []byte(dockerScript), 0o755))
+	installDir := t.TempDir()
+	t.Setenv("PATH", installDir+string(os.PathListSeparator)+fakeDockerDir)
+
+	ins := testInstaller(srv)
+	ins.InstallDir = installDir
+	ins.PluginDir = t.TempDir()
+
+	res, err := ins.Compose(context.Background(), p, "")
+	assert.NilError(t, err)
+	assert.Check(t, cmp.Equal(res.Kept, false))
+	assert.Check(t, cmp.Equal(res.Version, DefaultComposeVersion))
+	assert.Check(t, cmp.Equal(res.Replaced, "2.6.0"))
+}
+
+func TestComposeRefusesToInstallAVersionTooOld(t *testing.T) {
+	_, err := Installer{}.Compose(context.Background(), Current(), "v2.17.0")
+	assert.Check(t, cmp.ErrorContains(err, "compose v2.17.0 is older than "+MinComposeVersion))
+}
+
+func TestOlder(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"2.6.0", "2.24.0", true},
+		{"v2.23.9", "2.24.0", true},
+		{"2.24.0", "2.24.0", false},
+		{"v2.24.1", "2.24.0", false},
+		{"5.6.0", "2.24.0", false},
+		{"2.30.0-desktop.1", "2.24.0", false},
+		{"1.29.2", "2.24.0", true},
+	} {
+		assert.Check(t, cmp.Equal(older(tc.a, tc.b), tc.want), "%s < %s", tc.a, tc.b)
+	}
+}
