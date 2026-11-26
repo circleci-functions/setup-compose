@@ -1,0 +1,11 @@
+# Tests that run inside the project's network, reaching web by name, and exit
+# with TEST_EXIT once they have.
+services:
+  web:
+    image: nginx:alpine
+  test:
+    image: alpine:3
+    environment:
+      TEST_EXIT: ${TEST_EXIT:-0}
+    command: ["sh", "-c", "for i in $$(seq 30); do wget -qO- http://web >/dev/null && echo reached web && exit $$TEST_EXIT; sleep 1; done; exit 1"]
+    depends_on: [web]

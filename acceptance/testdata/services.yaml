@@ -1,0 +1,31 @@
+# A cache with a healthcheck, two services that wait for it, one of them a
+# one-shot migration, a server that starts listening late and has no
+# healthcheck, and a service that logs every second.
+services:
+  cache:
+    image: redis:7-alpine
+    ports: ["6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  web:
+    image: nginx:alpine
+    ports: ["80"]
+    depends_on:
+      cache:
+        condition: service_healthy
+  migrate:
+    image: alpine:3
+    command: ["sh", "-c", "echo migrated"]
+    depends_on:
+      cache:
+        condition: service_healthy
+  slow:
+    image: alpine:3
+    command: ["sh", "-c", "sleep 5; while true; do echo hello | nc -l -p 8080; done"]
+    ports: ["8080"]
+  ticker:
+    image: alpine:3
+    command: ["sh", "-c", "i=0; while true; do i=$$((i+1)); echo tick $$i; sleep 1; done"]

@@ -1,0 +1,9 @@
+# A healthcheck that never passes.
+services:
+  sick:
+    image: alpine:3
+    command: ["sh", "-c", "echo starting up; sleep infinity"]
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 1s
+      retries: 2
