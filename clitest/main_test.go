@@ -53,6 +53,7 @@ const fakeDocker = `#!/bin/sh
 echo "$*" >> "$FAKE_DOCKER_CALLS"
 case "$*" in
   "compose version") echo "Docker Compose version v5.6.0" ;;
+  "info --format "*) printf '%s\tUbuntu 24.04.3 LTS\n' "${FAKE_DOCKER_ENGINE_HOST:-$(hostname)}" ;;
   *" config --format json") echo '{"name":"app"}' ;;
   *" config --services") printf 'db\nweb\n' ;;
   *" ps --all --format json") cat "$FAKE_DOCKER_PS" ;;

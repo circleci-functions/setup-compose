@@ -147,7 +147,10 @@ func TestUpExitCodeFrom(t *testing.T) {
 
 func TestUpOnARemoteEngine(t *testing.T) {
 	j := newJob(t)
-	j.env["DOCKER_HOST"] = "tcp://10.0.0.5:2376"
+	// What setup_remote_docker looks like: a local socket to an engine
+	// running on another machine.
+	j.env["DOCKER_HOST"] = "unix:///var/run/docker.sock"
+	j.env["FAKE_DOCKER_ENGINE_HOST"] = "ip-10-0-0-5.ec2.internal"
 	j.setPS(
 		psLine("app-db-1", "db", "healthy", `[{"URL":"0.0.0.0","TargetPort":5432,"PublishedPort":5432,"Protocol":"tcp"}]`),
 		psLine("app-web-1", "web", "", `[{"URL":"0.0.0.0","TargetPort":80,"PublishedPort":1,"Protocol":"tcp"}]`),

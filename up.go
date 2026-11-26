@@ -82,7 +82,7 @@ func (c *upCmd) Run(ctx context.Context, client *sdk.Client) error {
 	if err != nil {
 		return err
 	}
-	remote := remoteEngine()
+	remote := remoteEngine(ctx)
 	if c.WaitPorts {
 		if err := waitPorts(ctx, containers, remote, deadline); err != nil {
 			return err
@@ -119,9 +119,13 @@ func (c *upCmd) ensureCompose(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("install compose: %w", err)
 	}
-	if res.Kept {
+	switch {
+	case res.Kept:
 		fmt.Fprintf(os.Stderr, "setup-compose: using compose %s\n", res.Version)
-	} else {
+	case res.Replaced != "":
+		fmt.Fprintf(os.Stderr, "setup-compose: compose %s is older than %s, so installed compose %s\n",
+			res.Replaced, install.MinComposeVersion, res.Version)
+	default:
 		fmt.Fprintf(os.Stderr, "setup-compose: installed compose %s\n", res.Version)
 	}
 	return nil
@@ -324,20 +328,29 @@ func absAll(paths []string) []string {
 	return out
 }
 
-// remoteEngine reports whether Docker runs somewhere other than this
-// machine, as under setup_remote_docker, so published ports are not on
-// loopback here.
-func remoteEngine() bool {
-	h := os.Getenv("DOCKER_HOST")
-	if h == "" || strings.HasPrefix(h, "unix://") || strings.HasPrefix(h, "npipe://") {
+// remoteEngine reports whether the Docker engine runs on another machine, as
+// under setup_remote_docker, so published ports are not on loopback here. The
+// socket may look local either way, so it asks the engine where it runs.
+// Docker Desktop runs in a VM of its own, but forwards ports to this machine.
+func remoteEngine(ctx context.Context) bool {
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.Name}}\t{{.OperatingSystem}}").Output()
+	if err != nil {
 		return false
 	}
-	rest := h[strings.Index(h, "://")+3:]
-	host, _, err := net.SplitHostPort(rest)
-	if err != nil {
-		host = rest
+	name, system, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	if strings.Contains(system, "Docker Desktop") {
+		return false
 	}
-	return host != "localhost" && host != "127.0.0.1" && host != "::1"
+	host, err := os.Hostname()
+	if err != nil {
+		return false
+	}
+	return !strings.EqualFold(shortName(name), shortName(host))
+}
+
+func shortName(host string) string {
+	name, _, _ := strings.Cut(host, ".")
+	return name
 }
 
 // durationFlag parses a duration flag, which is a string so a config can say

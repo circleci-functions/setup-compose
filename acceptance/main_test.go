@@ -144,8 +144,17 @@ func (j *job) exports(t *testing.T) map[string]string {
 
 // remoteEngine reports whether Docker runs on another machine, as under
 // setup_remote_docker, where published ports are out of this job's reach.
+// The suite asks the engine where it runs, as setup-compose does, rather than
+// reading DOCKER_HOST, since a remote engine may sit behind a local socket.
 func remoteEngine() bool {
-	return strings.HasPrefix(os.Getenv("DOCKER_HOST"), "tcp://")
+	out, err := exec.Command("docker", "info", "--format", "{{.Name}}\t{{.OperatingSystem}}").Output()
+	if err != nil {
+		return false
+	}
+	name, system, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	host, _ := os.Hostname()
+	short := func(h string) string { s, _, _ := strings.Cut(h, "."); return s }
+	return !strings.Contains(system, "Docker Desktop") && !strings.EqualFold(short(name), short(host))
 }
 
 func skipOnRemoteEngine(t *testing.T) {

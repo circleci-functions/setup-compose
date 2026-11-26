@@ -80,7 +80,8 @@ them. Pass `project-directory` to those again if you set it. Turn all exports of
 ## Tests inside the project, and remote Docker
 
 Under `setup_remote_docker`, containers run on a separate machine, so their published ports
-are out of the job's reach. `up` says so and exports no `COMPOSE_<SERVICE>_*` variables.
+are out of the job's reach. `up` asks the engine which machine it runs on, and when that is
+not this one, says so, skips the port wait and exports no `COMPOSE_<SERVICE>_*` variables.
 Put the tests in the project instead, reaching the other services by name, and run them
 with `exit-code-from`:
 
@@ -133,7 +134,8 @@ later steps need the ports or the disk space back, or the engine outlives the jo
 ## Installing Compose
 
 `up` uses the Compose already installed, as it is on CircleCI's Linux machine images and on
-`cimg/base`. If there is none, it installs the version pinned in this release. To choose
+`cimg/base`, if it is 2.24.0 or later. If there is none, or it is older, as on some older
+images, it installs the version pinned in this release. To choose
 one, set `compose-version` to a version such as `v5.6.0`, or `latest`. Downloads are
 checked against the checksums Docker publishes. The Docker CLI itself has to be there
 already.
