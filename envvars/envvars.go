@@ -27,13 +27,13 @@ func Services(containers []compose.Container) map[string]string {
 	vars := map[string]string{}
 	seen := map[string]bool{}
 	for _, c := range sortedByName(containers) {
-		pubs := published(c.Publishers)
+		pubs := Published(c.Publishers)
 		if len(pubs) == 0 || seen[c.Service] {
 			continue
 		}
 		seen[c.Service] = true
 		base := Prefix + Name(c.Service)
-		vars[base+"_HOST"] = host(pubs[0].URL)
+		vars[base+"_HOST"] = Host(pubs[0].URL)
 		vars[base+"_PORT"] = strconv.Itoa(pubs[0].PublishedPort)
 		for _, p := range pubs {
 			key := base + "_PORT_" + strconv.Itoa(p.TargetPort)
@@ -60,10 +60,10 @@ func Name(service string) string {
 	return b.String()
 }
 
-// published returns a container's published ports once each, preferring the
+// Published returns a container's published ports once each, preferring the
 // IPv4 binding of a port published on both, TCP before UDP, then by
 // container port.
-func published(pubs []compose.Publisher) []compose.Publisher {
+func Published(pubs []compose.Publisher) []compose.Publisher {
 	byPort := map[string]compose.Publisher{}
 	for _, p := range pubs {
 		if p.PublishedPort == 0 {
@@ -92,10 +92,10 @@ func published(pubs []compose.Publisher) []compose.Publisher {
 	return out
 }
 
-// host returns the address to reach a binding at. A port bound on every
+// Host returns the address to reach a binding at. A port bound on every
 // interface is reached on loopback, by address rather than as localhost,
 // which some clients resolve to ::1 first.
-func host(url string) string {
+func Host(url string) string {
 	switch url {
 	case "", "0.0.0.0", "::":
 		return "127.0.0.1"

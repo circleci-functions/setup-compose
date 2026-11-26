@@ -3,7 +3,6 @@ package ready
 import (
 	"context"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,12 +49,10 @@ func TestProbe(t *testing.T) {
 
 func TestWait(t *testing.T) {
 	ok := listen(t, func(c net.Conn) { time.Sleep(time.Second); _ = c.Close() })
-	assert.NilError(t, Wait(context.Background(), []string{ok}, 10*time.Millisecond))
+	assert.Check(t, cmp.Len(Wait(context.Background(), []string{ok}, 10*time.Millisecond), 0))
 
 	bad := listen(t, func(c net.Conn) { _ = c.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	err := Wait(ctx, []string{ok, bad}, 50*time.Millisecond)
-	assert.Check(t, cmp.ErrorContains(err, bad))
-	assert.Check(t, !strings.Contains(err.Error(), ok), "%q is ready", ok)
+	assert.Check(t, cmp.DeepEqual(Wait(ctx, []string{ok, bad}, 50*time.Millisecond), []string{bad}))
 }

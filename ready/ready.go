@@ -4,7 +4,6 @@ package ready
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"time"
@@ -33,8 +32,8 @@ func Probe(ctx context.Context, addr string) bool {
 }
 
 // Wait probes each address until all are ready or ctx is done, and returns
-// an error naming those that never were.
-func Wait(ctx context.Context, addrs []string, interval time.Duration) error {
+// those that never were.
+func Wait(ctx context.Context, addrs []string, interval time.Duration) []string {
 	pending := append([]string(nil), addrs...)
 	for {
 		var still []string
@@ -49,7 +48,7 @@ func Wait(ctx context.Context, addrs []string, interval time.Duration) error {
 		pending = still
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("nothing answered on %v: %w", pending, ctx.Err())
+			return pending
 		case <-time.After(interval):
 		}
 	}
